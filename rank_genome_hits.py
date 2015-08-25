@@ -6,10 +6,13 @@ from sys import argv, exit
 from collections import Counter, defaultdict
 from math import floor
 from string import replace
+from operator import itemgetter
 import numpy as np
 import matplotlib.pyplot as plt
+import logging
 import argparse
 import fnmatch
+import time
 import os
 import re
 
@@ -36,12 +39,34 @@ def parse_commandline(argv):
     parser.add_argument("-p", "--print-ranking", dest="print_ranking", action="store_true",
             default=False,
             help="Print genome rankings to stdout in addition to plot production [%(default)s].")
+    parser.add_argument("--loglevel", choices=["DEBUG", "INFO"],
+            default="INFO",
+            help="Set logging level [%(default)s].")
+    parser.add_argument("--logfile", metavar="FILE",
+            default="",
+            help="Redirect log output to logfile [%(default)s].")
 
     if len(argv) < 2:
         parser.print_help()
         exit()
 
-    return parser.parse_args(argv[1:])
+    options = parser.parse_args(argv[1:])
+
+    logger = logging.getLogger()
+    logger.setLevel(options.loglevel)
+    if options.logfile:
+        fh = logging.FileHandler(options.logfile)
+        file_formatter = logging.Formatter("%(asctime)s %(levelname)s: %(message)s")
+        fh.setFormatter(file_formatter)
+        logger.addHandler(fh)
+        logging.info("----------========= LOGGING STARTED {} ========---------".format(time.strftime("%c")))
+    else:
+        ch = logging.StreamHandler()
+        console_formatter = logging.Formatter("%(message)s")
+        ch.setFormatter(console_formatter)
+        logger.addHandler(ch)
+
+    return options
 
 
 def find_files(directory, pattern):
@@ -69,6 +94,7 @@ def parse_blast8(blast8_file, genomes, regex, min_identity, min_length):
     """
     # BLAT blast8 output format:
     # query_id, subject_id, %_identity, alignment_length, mismatches, gap_openings, q.start, q.end, s.start, s.end, e-value, bitscore
+    hits = defaultdict(list)
     with open(blast8_file) as f:
         for line in f:
             splitline = line.split()
@@ -78,9 +104,19 @@ def parse_blast8(blast8_file, genomes, regex, min_identity, min_length):
             length = int(splitline[3])
             mismatches = int(splitline[4])
             if identity > min_identity and length > min_length:
-                accno = parse_accno(target, regex)
-                genome = genomes[accno]
-                yield genome
+                hits[query].append((identity, length, target))
+
+    for query, hitlist in hits.iteritems():
+        maxid = max(hitlist, key=itemgetter(0))[0]
+        best_ids = [h for h in hitlist if h[0] >= maxid]
+        maxlen = max(best_ids, key=itemgetter(1))[1]
+        best_hits = [h for h in best_ids if h[1] >= maxlen]
+        logging.debug("Found", len(best_hits), "best hits for", query, "out of", len(hitlist))
+
+        for hit in best_hits:
+            accno = parse_accno(hit[2], regex)
+            genome = genomes[accno]
+            yield genome
 
 
 def parse_accno(s, regex):
