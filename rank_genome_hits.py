@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.7
 # Fredrik Boulund 2015
 # Rank hits to different genomes and plot barchart
 
@@ -20,7 +20,7 @@ def parse_commandline(argv):
     parser.add_argument("BLAST8", nargs="+",
             help="BLAT output file(s).")
     parser.add_argument("-d", "--refseq-dir", dest="refseq_dir", metavar="DIR",
-            default="/c3se/users/boulund/Glenn/c3-c3se605-15-1/sequences/proteotyping/bacterial_20150210",
+            default="/shared/genomes/NCBI/bacterial/20150210/",
             help="Path to NCBI RefSeq directory structure [%(default)s].")
     parser.add_argument("-i", "--min-identity", dest="min_identity", metavar="i",
             type=float,
@@ -109,7 +109,7 @@ def main(directory, blast8_files, min_identity, min_length):
 
 if __name__ == "__main__":
     options = parse_commandline(argv)
-    main(options.refseq_directory, 
+    main(options.refseq_dir, 
          options.BLAST8, 
          options.min_identity, 
          options.min_length)
