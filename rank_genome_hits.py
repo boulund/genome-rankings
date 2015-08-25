@@ -5,6 +5,9 @@
 from sys import argv, exit
 from collections import Counter, defaultdict
 from math import floor
+from string import replace
+import numpy as np
+import matplotlib.pyplot as plt
 import argparse
 import fnmatch
 import os
@@ -30,6 +33,9 @@ def parse_commandline(argv):
             type=int,
             default=6,
             help="Minimum aligned length [%(default)s].")
+    parser.add_argument("-p", "--print-ranking", dest="print_ranking", action="store_true",
+            default=False,
+            help="Print genome rankings to stdout in addition to plot production [%(default)s].")
 
     if len(argv) < 2:
         parser.print_help()
@@ -63,7 +69,6 @@ def parse_blast8(blast8_file, genomes, regex, min_identity, min_length):
     """
     # BLAT blast8 output format:
     # query_id, subject_id, %_identity, alignment_length, mismatches, gap_openings, q.start, q.end, s.start, s.end, e-value, bitscore
-    #fragment_hits = defaultdict(list)
     with open(blast8_file) as f:
         for line in f:
             splitline = line.split()
@@ -75,9 +80,7 @@ def parse_blast8(blast8_file, genomes, regex, min_identity, min_length):
             if identity > min_identity and length > min_length:
                 accno = parse_accno(target, regex)
                 genome = genomes[accno]
-                #fragment_hits[query].append(genome)
                 yield genome
-            #yield query, target
 
 
 def parse_accno(s, regex):
@@ -90,7 +93,48 @@ def parse_accno(s, regex):
         return hit
 
 
-def main(directory, blast8_files, min_identity, min_length):
+def plot_rankings(genome_stats, blast8):
+    """ Plot barchart of genomes in falling order.
+    """
+
+    N = 20
+    indices = np.arange(N)
+    width = 0.65
+
+    genomes, ranks = zip(*genome_stats.most_common(20))
+    genomes = [replace(genome, "_", " ") for genome in genomes]
+
+    fig, ax = plt.subplots(figsize=(10,15))
+    rects = ax.bar(indices, ranks, width)
+
+    ax.set_title("Genome rankings for {}".format(blast8))
+    ax.set_ylabel("Hits")
+    ax.set_xticks(indices+width)
+    ax.set_xticklabels(genomes, rotation="vertical")
+
+    fig.tight_layout()
+    fig.savefig("{}_rankings.pdf".format(blast8))
+    fig.savefig("{}_rankings.png".format(blast8))
+
+
+def print_rankings(genome_stats, blast8):
+    """ Print rankings to stdout.
+    """
+
+    print blast8
+    for genome, count in genome_stats.most_common(20):
+        print "{:>10} {:<}".format(count, genome)
+
+
+def write_rankings(genome_stats, blast8):
+    """ Write rankings to file.
+    """
+    with open(blast8+"_rankings.txt", "w") as f:
+        for genome, count in genome_stats.most_common():
+            f.write("{:>10} {:<}\n".format(count, genome))
+
+
+def main(directory, blast8_files, min_identity, min_length, print_ranking):
     genomes = build_genome_dictionary(directory)
     gi_accno_regex = re.compile(r'ref\|(\w{1,2}_[\d\w]+)\.\d{1,2}\|')
 
@@ -101,10 +145,10 @@ def main(directory, blast8_files, min_identity, min_length):
                                             min_identity,
                                             min_length))
         
-        print blast8_file
-        for genome, count in genome_stats.most_common(20):
-            print count, genome
-        
+        plot_rankings(genome_stats, blast8_file)
+        write_rankings(genome_stats, blast8_file)
+        if print_ranking:
+            print_rankings(genome_stats, blast8_file)
 
 
 if __name__ == "__main__":
@@ -112,4 +156,5 @@ if __name__ == "__main__":
     main(options.refseq_dir, 
          options.BLAST8, 
          options.min_identity, 
-         options.min_length)
+         options.min_length,
+         options.print_ranking)
