@@ -5,15 +5,37 @@
 from sys import argv, exit
 from collections import Counter, defaultdict
 from math import floor
-#import argparse
+import argparse
 import fnmatch
 import os
 import re
 
 
-if len(argv) < 2:
-    print "usage: script.py BLAST8_FILE[s]..."
-    exit()
+def parse_commandline(argv):
+    """ Parse commandline arguments.
+    """
+
+    desc = "Produce basic genome hit ranking plots. (c) Fredrik Boulund 2015."
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument("BLAST8", nargs="+",
+            help="BLAT output file(s).")
+    parser.add_argument("-d", "--refseq-dir", dest="refseq_dir", metavar="DIR",
+            default="/c3se/users/boulund/Glenn/c3-c3se605-15-1/sequences/proteotyping/bacterial_20150210",
+            help="Path to NCBI RefSeq directory structure [%(default)s].")
+    parser.add_argument("-i", "--min-identity", dest="min_identity", metavar="i",
+            type=float,
+            default=90.0,
+            help="Minimum identity [%(default)s].")
+    parser.add_argument("-l", "--min-length", dest="min_length", metavar="l",
+            type=int,
+            default=6,
+            help="Minimum aligned length [%(default)s].")
+
+    if len(argv) < 2:
+        parser.print_help()
+        exit()
+
+    return parser.parse_args(argv[1:])
 
 
 def find_files(directory, pattern):
@@ -36,7 +58,7 @@ def build_genome_dictionary(d):
     return genomes
 
 
-def parse_blast8(blast8_file, genomes, regex):
+def parse_blast8(blast8_file, genomes, regex, min_identity, min_length):
     """ Parse blast8 file.
     """
     # BLAT blast8 output format:
@@ -50,7 +72,7 @@ def parse_blast8(blast8_file, genomes, regex):
             identity = float(splitline[2])
             length = int(splitline[3])
             mismatches = int(splitline[4])
-            if identity > 90.0 and length > 6 and mismatches < floor(length*0.10):
+            if identity > min_identity and length > min_length:
                 accno = parse_accno(target, regex)
                 genome = genomes[accno]
                 #fragment_hits[query].append(genome)
@@ -68,18 +90,16 @@ def parse_accno(s, regex):
         return hit
 
 
-def generate_genome_stats(blast8_file, genomes, regex):
-    """ Generate counts for all seen genomes.
-    """
-    return Counter(parse_blast8(blast8_file, genomes, regex))
-
-
-def main(directory, blast8_files):
+def main(directory, blast8_files, min_identity, min_length):
     genomes = build_genome_dictionary(directory)
     gi_accno_regex = re.compile(r'ref\|(\w{1,2}_[\d\w]+)\.\d{1,2}\|')
 
     for blast8_file in blast8_files:
-        genome_stats = generate_genome_stats(blast8_file, genomes, gi_accno_regex)
+        genome_stats = Counter(parse_blast8(blast8_file, 
+                                            genomes, 
+                                            gi_accno_regex,
+                                            min_identity,
+                                            min_length))
         
         print blast8_file
         for genome, count in genome_stats.most_common(20):
@@ -88,6 +108,8 @@ def main(directory, blast8_files):
 
 
 if __name__ == "__main__":
-    refseq_directory = "/c3se/users/boulund/Glenn/c3-c3se605-15-1/sequences/proteotyping/bacterial_20150210"
-    blast8_files = argv[1:]
-    main(refseq_directory, blast8_files)
+    options = parse_commandline(argv)
+    main(options.refseq_directory, 
+         options.BLAST8, 
+         options.min_identity, 
+         options.min_length)
